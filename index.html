@@ -1,0 +1,877 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Excel Viewer v2</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <style>
+        /* Custom Styles (Minimal - Prefer Tailwind utilities) */
+        body {
+            font-family: 'Inter', sans-serif; /* Common modern font */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+        }
+
+        main {
+            flex: 1 0 auto;
+        }
+
+        /* Style for search results rows */
+        .result-row {
+            border-bottom: 1px solid #e5e7eb; /* Tailwind gray-200 */
+            padding: 0.75rem 0.5rem; /* py-3 px-2 */
+            font-size: 0.9em;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem; /* space-x-2 / space-y-2 equivalent */
+        }
+        .result-row:last-child {
+            border-bottom: none;
+        }
+
+        .result-cell {
+            padding: 0.25rem 0.5rem; /* py-1 px-2 */
+            flex: 1;
+            min-width: 120px;
+            word-break: break-word;
+            background-color: #ffffff; /* Tailwind white */
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* shadow-sm */
+        }
+
+        .result-cell strong {
+            color: #047857; /* Tailwind emerald-700 */
+            margin-right: 0.375rem; /* mr-1.5 */
+            font-weight: 600; /* semibold */
+        }
+
+        /* Custom scrollbar for results area (optional) */
+        #resultsArea::-webkit-scrollbar {
+            width: 8px;
+        }
+        #resultsArea::-webkit-scrollbar-track {
+            background: #e5e7eb; /* gray-200 */
+            border-radius: 10px;
+        }
+        #resultsArea::-webkit-scrollbar-thumb {
+            background-color: #9ca3af; /* gray-400 */
+            border-radius: 10px;
+            border: 2px solid #e5e7eb; /* gray-200 */
+        }
+         #resultsArea::-webkit-scrollbar-thumb:hover {
+            background-color: #6b7280; /* gray-500 */
+        }
+
+        /* Simple Toast Notification Style */
+        .toast-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, bottom 0.3s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .toast-notification.show {
+            opacity: 1;
+            bottom: 30px;
+        }
+        .toast-success { background-color: #10b981; /* emerald-500 */ }
+        .toast-error { background-color: #ef4444; /* red-500 */ }
+
+        /* Ensure icons align nicely */
+        .input-with-icon {
+            position: relative;
+        }
+        .input-with-icon .icon {
+            position: absolute;
+            left: 0.75rem; /* pl-3 */
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6b7280; /* gray-500 */
+        }
+        .input-with-icon input {
+            padding-left: 2.5rem; /* pl-10 */
+        }
+
+        /* Style for file list items */
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem; /* py-3 px-4 */
+            border-bottom: 1px solid #e5e7eb; /* gray-200 */
+        }
+         .file-item:last-child {
+            border-bottom: none;
+        }
+        .file-item span {
+            word-break: break-all; /* Handle long filenames */
+            margin-right: 1rem; /* mr-4 */
+        }
+        .delete-button {
+            cursor: pointer;
+            color: #ef4444; /* red-500 */
+            transition: color 0.2s ease;
+            flex-shrink: 0; /* Prevent icon from shrinking */
+        }
+        .delete-button:hover {
+            color: #dc2626; /* red-600 */
+        }
+
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <nav class="bg-emerald-600 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-center h-16">
+                <h1 class="text-xl sm:text-2xl font-bold text-white">
+                    <i class="fas fa-file-excel mr-2"></i>Offline Excel Viewer v2
+                </h1>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-6 sm:px-6 lg:px-8">
+
+        <section class="mb-6 bg-white p-4 sm:p-6 rounded-lg shadow">
+            <label for="searchBox" class="block text-sm font-medium text-gray-700 mb-2">Search Data</label>
+            <div class="input-with-icon">
+                 <i class="fas fa-search icon"></i>
+                 <input type="text" id="searchBox" placeholder="Type keywords to search..." class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 shadow-sm text-sm">
+            </div>
+             <p id="searchStatus" class="text-xs text-gray-500 mt-1 h-4"></p> </section>
+
+        <section class="mb-6">
+             <h2 class="text-lg font-semibold text-gray-800 mb-2">Results</h2>
+             <div id="resultsArea" class="bg-white p-3 sm:p-4 rounded-lg shadow min-h-[200px] max-h-[60vh] overflow-y-auto">
+                 <p class="default-message text-center text-gray-500 italic mt-4">
+                     Enter search terms above or upload a file below.
+                 </p>
+                 </div>
+        </section>
+
+        <section class="mb-6 bg-white p-4 sm:p-6 rounded-lg shadow">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Upload New File</h2>
+            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+                <div class="flex-grow">
+                    <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">Choose Excel File (.xlsx, .xls)</label>
+                    <input type="file" id="fileInput" accept=".xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer border border-gray-300 rounded-md p-1">
+                    <p class="text-xs text-gray-500 mt-1">Max file size: 10 MB</p>
+                </div>
+                </div>
+            <div id="progressContainer" class="mt-4" style="display: none;">
+                <label id="progressLabel" class="block text-sm font-medium text-gray-700 mb-1">Processing...</label>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="progressBar" class="bg-emerald-500 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="mt-3 h-5"> <p id="statusMessage" class="text-sm text-center font-medium"></p>
+            </div>
+        </section>
+
+        <section class="mb-6 bg-white p-4 sm:p-6 rounded-lg shadow">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Stored File Data</h2>
+            <div id="storedFilesList" class="border border-gray-200 rounded-md">
+                <div class="max-h-60 overflow-y-auto">
+                    <div class="file-item text-gray-500 italic" id="noFilesMessage">
+                        No files stored yet. Upload a file to begin.
+                    </div>
+                    </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-gray-700 text-gray-300 text-center py-3 mt-auto">
+        <p class="text-sm">Created By YashPathak09</p>
+         <p class="text-xs mt-1">App Status: <span id="footerStatus">Initializing...</span></p>
+    </footer>
+
+    <div id="toastContainer"></div>
+
+    <script src="https://unpkg.com/dexie@4.0.1/dist/dexie.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+
+    <script>
+        // --- DOM Elements ---
+        const fileInput = document.getElementById('fileInput');
+        const searchBox = document.getElementById('searchBox');
+        const resultsArea = document.getElementById('resultsArea');
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressLabel = document.getElementById('progressLabel');
+        const statusMessage = document.getElementById('statusMessage');
+        const storedFilesList = document.getElementById('storedFilesList').querySelector('.max-h-60'); // Target the scrollable div
+        const noFilesMessage = document.getElementById('noFilesMessage');
+        const defaultResultsMessage = resultsArea.querySelector('.default-message');
+        const toastContainer = document.getElementById('toastContainer');
+        const searchStatus = document.getElementById('searchStatus');
+        const footerStatus = document.getElementById('footerStatus');
+
+        // --- Constants ---
+        const DB_NAME = 'ExcelDataDB_V2'; // Updated DB name
+        const STORE_NAME = 'excelDataStoreV2'; // Updated store name
+        const METADATA_STORE_NAME = 'fileMetadataV2'; // Updated metadata store name
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+        const SEARCH_DEBOUNCE_MS = 300; // Delay search execution
+        const MAX_SEARCH_RESULTS = 200; // Limit displayed results for performance
+
+        // --- Dexie Database Setup ---
+        const db = new Dexie(DB_NAME);
+
+        // Define DB schema. Version 3 for the new structure.
+        // Indexing '_searchableText' for general keyword search (case-insensitive).
+        // Indexing 'fileName' for efficient deletion and metadata lookup.
+        db.version(3).stores({
+            [STORE_NAME]: '++id, fileName, *_searchableTokens', // Index filename and searchable tokens (multiEntry)
+            [METADATA_STORE_NAME]: 'fileName, headers' // Store metadata like headers
+        }).upgrade(tx => {
+            console.log("Applying Dexie schema version 3");
+            // Migration logic from previous versions could go here if needed.
+            // For V2 -> V3, we might need to re-process existing data to create _searchableTokens
+            // For simplicity, this example assumes a fresh start or manual data clearing if upgrading.
+        });
+
+        // --- Global State ---
+        let searchTimeoutId = null; // For debouncing
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM Content Loaded. Initializing v2...");
+            loadStoredFilesList();
+            updateResultsDisplay([]); // Set initial results area state
+            updateFooterStatus('Ready');
+            console.log("Initialization complete.");
+        });
+
+        // --- Event Listeners ---
+        fileInput.addEventListener('change', handleFileUpload);
+        searchBox.addEventListener('input', () => {
+            // Clear previous timeout
+            clearTimeout(searchTimeoutId);
+            // Set a new timeout
+            searchTimeoutId = setTimeout(handleSearch, SEARCH_DEBOUNCE_MS);
+            searchStatus.textContent = 'Typing...'; // Indicate activity
+        });
+
+        // --- File Upload Handling ---
+        async function handleFileUpload(event) {
+            console.log("File input changed.");
+            const file = event.target.files[0];
+            if (!file) {
+                console.log("No file selected.");
+                return;
+            }
+            console.log(`File selected: ${file.name}, Size: ${file.size}, Type: ${file.type}`);
+
+            // Reset UI elements related to upload
+            resetUploadUI();
+
+            // Validate file
+            if (!isValidFile(file)) {
+                showToast(`Invalid file. Please upload .xlsx or .xls (Max ${MAX_FILE_SIZE / 1024 / 1024}MB).`, 'error');
+                resetFileInput();
+                console.warn("Invalid file selected.");
+                return;
+            }
+
+            showProgress('Reading file...', 10);
+            updateFooterStatus(`Reading ${file.name}...`);
+
+            try {
+                const arrayBuffer = await readFileAsArrayBuffer(file);
+                showProgress('Parsing Excel data (this may take a moment)...', 30);
+                updateFooterStatus(`Parsing ${file.name}...`);
+
+                // Short delay for UI update before potentially heavy parsing
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                const workbookData = await parseExcelData(arrayBuffer);
+                showProgress('Processing data...', 60);
+                updateFooterStatus(`Processing ${file.name}...`);
+
+
+                if (!workbookData || workbookData.length === 0) {
+                    throw new Error("Could not read workbook structure or file is empty.");
+                }
+
+                // Process only the *first* sheet found with data
+                let sheetToProcess = null;
+                for (const sheet of workbookData) {
+                    if (sheet.data && sheet.data.length > 0) {
+                        sheetToProcess = sheet;
+                        console.log(`Processing sheet: ${sheet.sheetName}`);
+                        break;
+                    }
+                }
+
+                if (!sheetToProcess) {
+                    throw new Error("No data found in any sheet.");
+                }
+
+                const { sheetName, headers, data } = sheetToProcess;
+
+                showProgress('Storing data locally...', 80);
+                updateFooterStatus(`Storing data from ${file.name}...`);
+
+                // Use a unique identifier for the file+sheet combination
+                const fileIdentifier = `${file.name}::${sheetName}`;
+
+                // Check for existing data and confirm overwrite
+                const existingMeta = await db[METADATA_STORE_NAME].get(fileIdentifier);
+                if (existingMeta) {
+                    if (!confirm(`Data for "${file.name}" (Sheet: "${sheetName}") already exists. Overwrite?`)) {
+                        console.log("Storage cancelled by user.");
+                        throw new Error("Storage cancelled by user.");
+                    }
+                    console.log(`Overwriting existing data for ${fileIdentifier}`);
+                    await deleteFileDataInternal(fileIdentifier, false); // Delete without confirmation prompt
+                }
+
+                await storeData(fileIdentifier, headers, data);
+
+                showProgress('Complete!', 100);
+                showToast(`Data from "${file.name}" (Sheet: "${sheetName}") stored successfully!`, 'success');
+                updateFooterStatus('Ready');
+
+                resetFileInput();
+                await loadStoredFilesList(); // Refresh stored files list
+
+            } catch (error) {
+                console.error("Error processing file:", error);
+                showToast(`Error: ${error.message}`, 'error');
+                updateFooterStatus('Error processing file');
+                resetFileInput(); // Reset input even on error
+            } finally {
+                // Hide progress bar after a delay
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 2500);
+            }
+        }
+
+        function resetUploadUI() {
+            statusMessage.textContent = '';
+            progressContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            // resultsArea doesn't need reset here, only on search/load
+        }
+
+        function resetFileInput() {
+            fileInput.value = ''; // Crucial to allow re-uploading the same file
+        }
+
+        function isValidFile(file) {
+            const allowedExtensions = ['.xlsx', '.xls'];
+            const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            const isValidExtension = allowedExtensions.includes(fileExtension);
+            const isValidSize = file.size <= MAX_FILE_SIZE;
+            console.log(`Validation - Extension: ${fileExtension} (Valid: ${isValidExtension}), Size: ${file.size} (Valid: ${isValidSize})`);
+            return isValidExtension && isValidSize;
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    console.log("File read successfully.");
+                    resolve(event.target.result);
+                };
+                reader.onerror = (error) => {
+                    console.error("FileReader error:", error);
+                    reject(new Error("Failed to read file."));
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // --- Excel Parsing (SheetJS) ---
+        function parseExcelData(arrayBuffer) {
+            console.log("Starting Excel parsing...");
+            return new Promise((resolve, reject) => {
+                try {
+                    // Use SheetJS library (XLSX)
+                    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+                    const results = [];
+                    console.log(`Workbook sheets: ${workbook.SheetNames.join(', ')}`);
+
+                    workbook.SheetNames.forEach(sheetName => {
+                        const sheet = workbook.Sheets[sheetName];
+                        // header: 1 gets array of arrays. defval: "" avoids undefined/null.
+                        const rowsArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+                        if (rowsArray.length > 0) {
+                            // Find the first row with any content as the header row
+                            let headerRowIndex = 0;
+                            while (headerRowIndex < rowsArray.length && rowsArray[headerRowIndex].every(cell => cell === "")) {
+                                headerRowIndex++;
+                            }
+
+                            if (headerRowIndex >= rowsArray.length) {
+                                console.log(`Sheet "${sheetName}" seems empty after skipping blank rows.`);
+                                results.push({ sheetName, headers: [], data: [] });
+                                return; // Skip to next sheet
+                            }
+
+                            const headers = rowsArray[headerRowIndex].map(header => String(header || "").trim());
+                            const data = rowsArray.slice(headerRowIndex + 1).map((rowArray) => {
+                                let rowData = {};
+                                headers.forEach((header, index) => {
+                                    const rawValue = rowArray[index];
+                                    let stringValue = "";
+                                    if (rawValue instanceof Date) {
+                                        // Format dates consistently and check validity
+                                        stringValue = !isNaN(rawValue) ? rawValue.toLocaleString() : ""; // Use localeString for readability
+                                    } else if (rawValue !== null && rawValue !== undefined) {
+                                        stringValue = String(rawValue);
+                                    }
+                                    rowData[header] = stringValue;
+                                });
+                                return rowData;
+                            });
+                            results.push({ sheetName, headers, data });
+                            console.log(`Parsed sheet "${sheetName}": ${data.length} rows, ${headers.length} columns.`);
+                        } else {
+                            results.push({ sheetName, headers: [], data: [] });
+                            console.log(`Parsed sheet "${sheetName}": Empty.`);
+                        }
+                    });
+                    console.log("Excel parsing complete.");
+                    resolve(results);
+                } catch (error) {
+                    console.error("SheetJS parsing error:", error);
+                    reject(new Error(`Failed to parse Excel file: ${error.message || 'Unknown parsing error'}`));
+                }
+                // Note: Parsing large files can still block the main thread.
+                // For true background processing, a Web Worker would be needed here.
+            });
+        }
+
+        // --- Data Storage (DexieJS) ---
+        async function storeData(fileIdentifier, headers, data) {
+            console.log(`Storing data for ${fileIdentifier}. Rows: ${data.length}`);
+
+            try {
+                // Prepare data for storage: add file identifier and searchable tokens
+                const dataToStore = data.map(row => {
+                    // Create an array of lower-case words/tokens from all cell values for searching
+                    const searchableTokens = Object.values(row)
+                        .flatMap(val => String(val || "").toLowerCase().split(/\s+/)) // Split by whitespace
+                        .filter(token => token.length > 0); // Remove empty strings
+
+                    return {
+                        ...row,
+                        fileName: fileIdentifier, // Store the unique identifier
+                        _searchableTokens: searchableTokens // Store the token array for multiEntry index
+                    };
+                });
+
+                // Store metadata (headers for this specific file+sheet)
+                await db[METADATA_STORE_NAME].put({ fileName: fileIdentifier, headers: headers });
+                console.log(`Metadata stored for ${fileIdentifier}`);
+
+                // Batch insert data using bulkPut for efficiency
+                await db.transaction('rw', db[STORE_NAME], async () => {
+                    await db[STORE_NAME].bulkPut(dataToStore);
+                });
+
+                console.log(`Data from ${fileIdentifier} stored successfully.`);
+
+            } catch (error) {
+                console.error("Error storing data:", error);
+                // Attempt to clean up metadata if data storage failed partially
+                await db[METADATA_STORE_NAME].delete(fileIdentifier).catch(e => console.error("Metadata cleanup failed:", e));
+                throw new Error(`Failed to store data in IndexedDB: ${error.message}`);
+            }
+        }
+
+
+        // --- Search Functionality ---
+        async function handleSearch() {
+            const query = searchBox.value.trim().toLowerCase();
+            console.log(`Handling search for query: "${query}"`);
+            searchStatus.textContent = 'Searching...';
+            updateFooterStatus('Searching...');
+
+            if (query.length === 0) {
+                updateResultsDisplay([]); // Clear results if query is empty
+                searchStatus.textContent = '';
+                updateFooterStatus('Ready');
+                return;
+            }
+
+            const startTime = performance.now();
+            try {
+                // Split query into keywords
+                const keywords = query.split(/\s+/).filter(k => k.length > 0);
+
+                if (keywords.length === 0) {
+                    updateResultsDisplay([]);
+                    searchStatus.textContent = '';
+                     updateFooterStatus('Ready');
+                    return;
+                }
+
+                // Perform search using the multiEntry index '_searchableTokens'
+                // This finds rows where *all* keywords are present in the tokens array.
+                let collection = db[STORE_NAME];
+                keywords.forEach(keyword => {
+                    // Chain 'where' clauses for AND logic
+                    collection = collection.where('_searchableTokens').equals(keyword);
+                });
+
+                const results = await collection
+                                    .limit(MAX_SEARCH_RESULTS)
+                                    .toArray();
+
+                const endTime = performance.now();
+                const duration = (endTime - startTime).toFixed(1);
+                console.log(`Search completed in ${duration} ms. Found ${results.length} results.`);
+                searchStatus.textContent = `Found ${results.length} results in ${duration} ms.`;
+                updateFooterStatus('Ready');
+
+                updateResultsDisplay(results);
+
+            } catch (error) {
+                console.error("Search error:", error);
+                showToast("Error performing search.", 'error');
+                updateResultsDisplay([]); // Clear results on error
+                searchStatus.textContent = 'Search error.';
+                updateFooterStatus('Error during search');
+            }
+        }
+
+        // --- UI Update Functions ---
+        async function updateResultsDisplay(results) {
+            resultsArea.innerHTML = ''; // Clear previous results
+
+             // Re-add the default message element if it was removed (it shouldn't be with innerHTML clear)
+             if (!resultsArea.querySelector('.default-message')) {
+                 resultsArea.appendChild(defaultResultsMessage);
+             }
+
+            if (results.length === 0) {
+                console.log("Updating display: No results.");
+                 defaultResultsMessage.style.display = 'block'; // Show default message
+                if (searchBox.value.trim().length > 0) {
+                    defaultResultsMessage.textContent = 'No results found matching your search criteria.';
+                } else {
+                    // Check if files are stored before changing the default message
+                    const fileCount = await db[METADATA_STORE_NAME].count();
+                    if (fileCount > 0) {
+                        defaultResultsMessage.textContent = 'Type in the search box above to find data.';
+                    } else {
+                        defaultResultsMessage.textContent = 'Upload an Excel file to begin searching.';
+                    }
+                }
+                return;
+            }
+
+             defaultResultsMessage.style.display = 'none'; // Hide default message
+            console.log(`Updating display with ${results.length} results.`);
+
+            // Group results by file to fetch headers efficiently
+            const resultsByFile = results.reduce((acc, row) => {
+                const fileName = row.fileName; // The unique file::sheet identifier
+                if (!acc[fileName]) {
+                    acc[fileName] = [];
+                }
+                acc[fileName].push(row);
+                return acc;
+            }, {});
+
+            // Fetch headers for all relevant files once
+            const fileIdentifiers = Object.keys(resultsByFile);
+            const metadataMap = new Map();
+            try {
+                const metadataArray = await db[METADATA_STORE_NAME].where('fileName').anyOf(fileIdentifiers).toArray();
+                metadataArray.forEach(meta => metadataMap.set(meta.fileName, meta.headers));
+                console.log("Fetched headers for files:", fileIdentifiers);
+            } catch (e) {
+                console.error("Could not fetch headers for results:", e);
+                showToast("Error retrieving headers for displaying results.", 'error');
+                // Fallback handled below if headers are missing
+            }
+
+            // Use a DocumentFragment for efficient batch DOM insertion
+            const fragment = document.createDocumentFragment();
+
+            // Render results, potentially grouped by file (optional)
+            fileIdentifiers.forEach(fileIdentifier => {
+                const fileResults = resultsByFile[fileIdentifier];
+                // Get headers from map, or fallback to object keys (excluding internal fields)
+                const headers = metadataMap.get(fileIdentifier) || Object.keys(fileResults[0] || {}).filter(k => !k.startsWith('_') && k !== 'id' && k !== 'fileName');
+
+                // Optional: Add a header for the file group
+                // const fileHeader = document.createElement('h3');
+                // fileHeader.textContent = `Results from: ${escapeHTML(fileIdentifier)}`;
+                // fileHeader.className = 'text-md font-semibold text-emerald-700 mt-4 mb-2 px-1';
+                // fragment.appendChild(fileHeader);
+
+                fileResults.forEach(row => {
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'result-row';
+
+                    headers.forEach(header => {
+                        const cellEl = document.createElement('div');
+                        cellEl.className = 'result-cell';
+                        const cellValue = row[header] !== undefined && row[header] !== null ? String(row[header]) : '';
+
+                        // Basic highlighting (can be computationally expensive for many results)
+                        // let displayValue = escapeHTML(cellValue);
+                        // const query = searchBox.value.trim().toLowerCase();
+                        // if (query) {
+                        //     const regex = new RegExp(`(${query.split(/\s+/).join('|')})`, 'gi');
+                        //     displayValue = displayValue.replace(regex, '<mark class="bg-yellow-200 px-0.5 rounded">$1</mark>');
+                        // }
+
+                        // Use innerHTML carefully - escapeHTML is important!
+                        cellEl.innerHTML = `<strong>${escapeHTML(String(header))}:</strong> ${escapeHTML(cellValue)}`;
+                        rowEl.appendChild(cellEl);
+                    });
+
+                    // Add file source info subtly
+                    const fileSourceEl = document.createElement('div');
+                    fileSourceEl.className = 'result-cell text-xs text-gray-400 italic text-right';
+                    fileSourceEl.style.minWidth = 'fit-content'; // Adjust size
+                    fileSourceEl.style.flexBasis = '100%'; // Force to new line if needed
+                    fileSourceEl.style.marginTop = '0.25rem';
+                     fileSourceEl.style.backgroundColor = 'transparent'; // Override cell background
+                     fileSourceEl.style.boxShadow = 'none'; // Override cell shadow
+                    fileSourceEl.textContent = `(${escapeHTML(fileIdentifier)})`;
+                    rowEl.appendChild(fileSourceEl);
+
+                    fragment.appendChild(rowEl);
+                });
+            });
+            // Append the fragment to the DOM once
+            resultsArea.appendChild(fragment);
+        }
+
+        function showProgress(message, percentage) {
+            statusMessage.textContent = ''; // Clear normal status
+            progressLabel.textContent = message;
+            progressBar.style.width = percentage + '%';
+            progressContainer.style.display = 'block';
+            console.log(`Progress: ${percentage}% - ${message}`);
+        }
+
+        // Replaces Materialize Toast
+        function showToast(message, type = 'info', duration = 4000) {
+            const toastId = `toast-${Date.now()}`;
+            const toastEl = document.createElement('div');
+            toastEl.id = toastId;
+            toastEl.className = `toast-notification ${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : 'bg-gray-700'}`;
+            toastEl.textContent = message;
+
+            toastContainer.appendChild(toastEl);
+
+            // Trigger the animation
+            requestAnimationFrame(() => {
+                 requestAnimationFrame(() => {
+                    toastEl.classList.add('show');
+                 });
+            });
+
+
+            // Remove the toast after duration
+            setTimeout(() => {
+                toastEl.classList.remove('show');
+                // Remove from DOM after transition
+                toastEl.addEventListener('transitionend', () => {
+                    if (toastEl.parentElement) {
+                        toastEl.remove();
+                    }
+                }, { once: true });
+            }, duration);
+
+             // Log based on type
+            if (type === 'error') {
+                console.error(`Toast: ${message}`);
+                statusMessage.textContent = message; // Also show errors in the status area
+                statusMessage.className = 'text-sm text-center font-medium text-red-600';
+            } else if (type === 'success') {
+                 console.log(`Toast (Success): ${message}`);
+                 statusMessage.textContent = message;
+                 statusMessage.className = 'text-sm text-center font-medium text-emerald-600';
+            } else {
+                console.log(`Toast (Info): ${message}`);
+                statusMessage.textContent = message;
+                 statusMessage.className = 'text-sm text-center font-medium text-gray-600';
+            }
+        }
+
+        function updateFooterStatus(message) {
+            if (footerStatus) {
+                footerStatus.textContent = message;
+            }
+             // Optionally update the main status message too if it's a general status
+             // statusMessage.textContent = message;
+             // statusMessage.className = 'text-sm text-center font-medium text-gray-600';
+        }
+
+
+        // --- Stored Files List Management ---
+        async function loadStoredFilesList() {
+            console.log("Loading stored files list...");
+            updateFooterStatus('Loading file list...');
+            try {
+                const filesMeta = await db[METADATA_STORE_NAME].orderBy('fileName').toArray();
+
+                // Clear only list items, not the default message initially
+                const items = storedFilesList.querySelectorAll('.file-item:not(#noFilesMessage)');
+                items.forEach(item => item.remove());
+
+                if (filesMeta.length === 0) {
+                    console.log("No stored files found.");
+                    noFilesMessage.style.display = 'flex'; // Show default message (use flex for alignment)
+                    storedFilesList.style.border = 'none'; // Hide border if empty
+                } else {
+                    noFilesMessage.style.display = 'none'; // Hide default message
+                     storedFilesList.style.border = ''; // Show border
+                    console.log(`Found ${filesMeta.length} stored files.`);
+                    const fragment = document.createDocumentFragment();
+                    filesMeta.forEach(fileMeta => {
+                        const div = document.createElement('div');
+                        div.className = 'file-item'; // Use the class defined in CSS
+
+                        const fileNameSpan = document.createElement('span');
+                        fileNameSpan.textContent = fileMeta.fileName; // Display the unique identifier
+                        fileNameSpan.title = `Headers: ${fileMeta.headers.join(', ')}`;
+                        fileNameSpan.className = 'text-sm text-gray-700';
+
+                        const deleteIcon = document.createElement('i');
+                        deleteIcon.className = 'fas fa-trash-alt delete-button text-lg'; // Font Awesome icon
+                        deleteIcon.title = `Delete data from ${fileMeta.fileName}`;
+                        deleteIcon.onclick = (e) => {
+                            e.stopPropagation(); // Prevent potential parent click events
+                            deleteFileData(fileMeta.fileName); // Ask for confirmation
+                        };
+
+                        div.appendChild(fileNameSpan);
+                        div.appendChild(deleteIcon);
+                        fragment.appendChild(div);
+                    });
+                    storedFilesList.appendChild(fragment); // Append all items at once
+                }
+                 updateFooterStatus('Ready');
+            } catch (error) {
+                console.error("Error loading stored files list:", error);
+                showToast("Could not load the list of stored files.", 'error');
+                noFilesMessage.style.display = 'flex';
+                noFilesMessage.textContent = 'Error loading stored files list.';
+                 updateFooterStatus('Error loading files');
+                 storedFilesList.style.border = 'none';
+            }
+        }
+
+        async function deleteFileData(fileIdentifier) {
+            if (confirm(`Are you sure you want to delete all data associated with "${fileIdentifier}"? This cannot be undone.`)) {
+                 updateFooterStatus(`Deleting ${fileIdentifier}...`);
+                await deleteFileDataInternal(fileIdentifier, true); // Delete with confirmation shown
+            }
+        }
+
+        // Internal delete function to avoid repeating logic
+        async function deleteFileDataInternal(fileIdentifier, showSuccessMessage = true) {
+            console.log(`Deleting data for ${fileIdentifier}`);
+            try {
+                // Use transaction for atomicity (delete data and metadata together)
+                await db.transaction('rw', db[STORE_NAME], db[METADATA_STORE_NAME], async () => {
+                    // Delete all rows matching the file identifier
+                    await db[STORE_NAME].where('fileName').equals(fileIdentifier).delete();
+                    // Delete the metadata entry
+                    await db[METADATA_STORE_NAME].delete(fileIdentifier);
+                });
+
+                console.log(`Successfully deleted data for ${fileIdentifier}`);
+                if (showSuccessMessage) {
+                    showToast(`Data for "${fileIdentifier}" deleted successfully.`, 'success');
+                }
+                await loadStoredFilesList(); // Refresh the list
+                updateResultsDisplay([]); // Clear results as data source might be gone
+                searchBox.value = ''; // Clear search box
+                searchStatus.textContent = '';
+                 updateFooterStatus('Ready');
+
+            } catch (error) {
+                console.error(`Error deleting data for ${fileIdentifier}:`, error);
+                showToast(`Failed to delete data for "${fileIdentifier}".`, 'error');
+                 updateFooterStatus('Error deleting file');
+            }
+        }
+
+        // --- Utility Functions ---
+        function escapeHTML(str) {
+            // Basic escaping to prevent HTML injection from data
+            if (typeof str !== 'string') return str;
+            return str.replace(/[&<>"']/g, function(match) {
+                switch (match) {
+                    case '&': return '&amp;';
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '"': return '&quot;';
+                    case "'": return '&#39;'; // او &#x27;
+                    default: return match;
+                }
+            });
+        }
+
+        // Debounce function (already implicitly used via setTimeout in listener)
+        // function debounce(func, wait) {
+        //     let timeout;
+        //     return function executedFunction(...args) {
+        //         const later = () => {
+        //             clearTimeout(timeout);
+        //             func(...args);
+        //         };
+        //         clearTimeout(timeout);
+        //         timeout = setTimeout(later, wait);
+        //     };
+        // }
+
+        // --- Service Worker (Optional - for PWA/Offline capabilities) ---
+        /*
+        function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js') // Adjust path if needed
+                    .then(registration => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.error('Service Worker registration failed:', error);
+                    });
+            }
+        }
+        // Uncomment the line below in DOMContentLoaded if you add a sw.js file
+        // registerServiceWorker();
+        */
+
+    </script>
+
+</body>
+</html>
